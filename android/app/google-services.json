@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "459797836021",
+    "project_id": "sevis-location",
+    "storage_bucket": "sevis-location.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:459797836021:android:f935195bb2535137f655bc",
+        "android_client_info": {
+          "package_name": "com.example.sevis_lakay"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFAN6gAc07lxQBDlWuvEXEK6xkzV-YXCE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

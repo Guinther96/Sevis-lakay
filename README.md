@@ -1,2 +1,16 @@
-# Sevis-lakay
-Sèvis Lakay est une application mobile conçue pour connecter les utilisateurs avec les commerces, services et entreprises locales en Haïti. Que vous recherchiez un restaurant, un hôtel, un salon de beauté, une église ou un service professionnel, Sèvis Lakay vous aide à trouver rapidement ce dont vous avez besoin, près de chez vous.
+# sevis_lakay
+
+A new Flutter project.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
