@@ -1,5 +1,3 @@
-import 'package:cloud_firestore_platform_interface/src/timestamp.dart';
-
 class ModelAccount {
   late final String businessName;
   final String email;
@@ -12,7 +10,7 @@ class ModelAccount {
     required this.email,
     required this.phoneNumber,
     required this.address,
-    required Timestamp updatedAt,
+
     required String id,
     required this.image,
   });

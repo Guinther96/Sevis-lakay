@@ -1,146 +1,146 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:sevis_lakay/views/home/home_page.dart';
+import 'package:sevis_lakay/views/login_account/login.dart';
+import 'package:sevis_lakay/views/splash_screen.dart';
+import 'package:sevis_lakay/widget/bottom_navigation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class CreateUserAccountForm extends StatefulWidget {
-  const CreateUserAccountForm({super.key});
+class SignUpPage extends StatefulWidget {
+  const SignUpPage({super.key});
 
   @override
-  State<CreateUserAccountForm> createState() => _CreateUserAccountFormState();
+  State<SignUpPage> createState() => _SignUpPageState();
 }
 
-class _CreateUserAccountFormState extends State<CreateUserAccountForm> {
+class _SignUpPageState extends State<SignUpPage> {
+  final supabase = Supabase.instance.client;
   final _formKey = GlobalKey<FormState>();
 
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final emailController = TextEditingController();
+  final confirmEmailController = TextEditingController();
+  final passwordController = TextEditingController();
 
-  File? _profileImage;
-  bool _isLoading = false;
+  bool isLoading = false;
 
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-    );
-    if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
-    }
-  }
-
-  Future<String?> _uploadProfileImage(String uid) async {
-    if (_profileImage == null) return null;
-
-    final storageRef = FirebaseStorage.instance.ref().child(
-      'user_profiles/$uid.jpg',
-    );
-    await storageRef.putFile(_profileImage!);
-    return await storageRef.getDownloadURL();
-  }
-
-  Future<void> _createAccount() async {
+  void _signUp() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+
+    setState(() {
+      isLoading = true;
+    });
 
     try {
-      // 1. Créer l'utilisateur
-      final userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text.trim(),
-          );
-      final uid = userCredential.user!.uid;
+      final AuthResponse response = await supabase.auth.signUp(
+        email: email,
+        password: password,
+        emailRedirectTo: 'myapp://login-callback',
+      );
 
-      // 2. Upload image (optionnel)
-      final imageUrl = await _uploadProfileImage(uid);
-
-      // 3. Enregistrer dans Firestore
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'name': _nameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'profileImage': imageUrl,
-        'createdAt': Timestamp.now(),
+      setState(() {
+        isLoading = false;
       });
 
-      // 4. Mise à jour du profil Firebase Auth
-      await userCredential.user!.updateDisplayName(_nameController.text.trim());
-      if (imageUrl != null) {
-        await userCredential.user!.updatePhotoURL(imageUrl);
+      if (response.user != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inscription réussie ! Vérifiez votre email.'),
+          ),
+        );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => SplashScreen()),
+          (Route<dynamic> route) => false, // enlève toutes les anciennes routes
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur inconnue pendant l\'inscription'),
+          ),
+        );
       }
-
-      // 5. Naviguer ou succès
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Compte créé avec succès !")));
-      Navigator.pop(context); // ou aller à la page d'accueil
     } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Erreur: ${e.toString()}")));
-    } finally {
-      setState(() => _isLoading = false);
+      ).showSnackBar(SnackBar(content: Text('Exception : $e')));
     }
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    confirmEmailController.dispose();
+    passwordController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Créer un compte utilisateur')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: const Text('Inscription'),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
             child: Column(
               children: [
-                GestureDetector(
-                  onTap: _pickImage,
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundImage: _profileImage != null
-                        ? FileImage(_profileImage!)
-                        : null,
-                    child: _profileImage == null
-                        ? Icon(Icons.add_a_photo, size: 40)
-                        : null,
-                  ),
-                ),
-                SizedBox(height: 20),
+                Image.asset('assets/images/sevislakay.png', height: 200),
                 TextFormField(
-                  controller: _nameController,
-                  decoration: InputDecoration(labelText: "Nom complet"),
-                  validator: (value) => value!.isEmpty ? "Nom requis" : null,
-                ),
-                SizedBox(height: 10),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: InputDecoration(labelText: "Email"),
+                  controller: emailController,
+                  decoration: const InputDecoration(labelText: 'Email'),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) =>
-                      !value!.contains('@') ? "Email invalide" : null,
+                  validator: (val) => val == null || !val.contains('@')
+                      ? 'Entrez un email valide'
+                      : null,
                 ),
-                SizedBox(height: 10),
                 TextFormField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(labelText: "Mot de passe"),
-                  obscureText: true,
-                  validator: (value) =>
-                      value!.length < 6 ? "Min 6 caractères" : null,
+                  controller: confirmEmailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirmez l\'email',
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (val) => val != emailController.text
+                      ? 'Les emails ne correspondent pas'
+                      : null,
                 ),
-                SizedBox(height: 20),
-                _isLoading
-                    ? CircularProgressIndicator()
+                TextFormField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(labelText: 'Mot de passe'),
+                  obscureText: true,
+                  validator: (val) => val == null || val.length < 6
+                      ? 'Mot de passe trop court (min 6 caractères)'
+                      : null,
+                ),
+                const SizedBox(height: 20),
+                isLoading
+                    ? const CircularProgressIndicator()
                     : ElevatedButton(
-                        onPressed: _createAccount,
-                        child: Text("Créer le compte"),
+                        onPressed: _signUp,
+                        child: const Text('S\'inscrire'),
                       ),
+                SizedBox(height: 20),
+                GestureDetector(
+                  child: Text(
+                    'Déjà inscrit ?',
+                    style: TextStyle(color: Colors.blue),
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => Login()),
+                    );
+                  },
+                ),
               ],
             ),
           ),

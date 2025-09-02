@@ -1,308 +1,461 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:sevis_lakay/components/buttons_double.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sevis_lakay/components/colors.dart';
-import 'package:sevis_lakay/components/text_styles.dart';
-import 'package:sevis_lakay/views/login_account/create_account/Create_account.dart';
+import 'package:sevis_lakay/views/favorites/favoritesScreen.dart';
+import 'package:sevis_lakay/views/home/button_login.dart';
+import 'package:sevis_lakay/views/home/home_page.dart';
+import 'package:sevis_lakay/views/profile/Business_account/business_account.dart';
+import 'package:sevis_lakay/views/profile/Business_account/formulaire.dart';
+import 'package:sevis_lakay/views/profile/user_acccount/help_center.dart';
+import 'package:sevis_lakay/views/profile/user_acccount/personel_info.dart';
+import 'package:sevis_lakay/views/profile/user_acccount/settings.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class Profilescreen extends StatefulWidget {
-  const Profilescreen({super.key});
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
 
   @override
-  State<Profilescreen> createState() => _ProfilescreenState();
+  State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfilescreenState extends State<Profilescreen> {
-  bool hasBusinessAccount = false;
-  bool isLoading = true;
+class _ProfileScreenState extends State<ProfileScreen> {
+  final supabase = Supabase.instance.client;
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
 
-  final currentUser = FirebaseAuth.instance.currentUser;
+  String? avatarUrl;
+  String? userName; // 👈 ajout
+  bool isLoading = true;
+  bool hasBusinessAccount = false;
+
+  final user = Supabase.instance.client.auth.currentUser;
+  Map<String, dynamic>? businessAccountData;
 
   @override
   void initState() {
     super.initState();
-    if (currentUser != null) {
+    if (user != null) {
+      _loadProfile();
       _checkBusinessAccount();
     } else {
       isLoading = false;
     }
   }
 
-  Future<void> _checkBusinessAccount() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('business_accounts')
-        .doc(currentUser!.uid)
-        .get();
+  Future<void> _loadProfile() async {
+    final response = await supabase
+        .from('profiles')
+        .select()
+        .eq('id', user!.id)
+        .maybeSingle();
+
+    if (response != null) {
+      _nameController.text = response['full_name'] ?? '';
+      avatarUrl = response['avatar_url'];
+      userName = response['full_name'] ?? ''; // 👈 ajout
+    } else {
+      await supabase.from('profiles').insert({'id': user!.id});
+      _nameController.text = '';
+      avatarUrl = null;
+      userName = ''; // 👈 ajout
+    }
+
     setState(() {
-      hasBusinessAccount = doc.exists;
       isLoading = false;
     });
   }
 
-  void _showCreateAccountDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Créer un compte business'),
-          content: Text('Voulez-vous créer un compte business ?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/createBusinessAccount');
-              },
-              child: Text('Créer'),
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _checkBusinessAccount() async {
+    final response = await supabase
+        .from('business_accounts')
+        .select()
+        .eq('user_id', user!.id)
+        .maybeSingle();
+
+    setState(() {
+      hasBusinessAccount = response != null;
+      businessAccountData = response;
+    });
+  }
+
+  Future<void> _updateProfile() async {
+    final fullName = _nameController.text.trim();
+    await supabase
+        .from('profiles')
+        .update({
+          'full_name': fullName,
+          if (avatarUrl != null) 'avatar_url': avatarUrl,
+        })
+        .eq('id', user!.id);
+
+    setState(() {
+      userName = fullName; // 👈 ajout
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Profil mis à jour')));
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+
+    if (picked != null) {
+      final file = File(picked.path);
+      final fileExt = picked.path.split('.').last;
+      final fileName = 'avatar_${user!.id}.$fileExt';
+
+      final storage = supabase.storage.from('profiles');
+
+      await storage.upload(
+        fileName,
+        file,
+        fileOptions: const FileOptions(upsert: true),
+      );
+
+      final publicUrl = storage.getPublicUrl(fileName);
+
+      await supabase
+          .from('profiles')
+          .update({'avatar_url': publicUrl})
+          .eq('id', user!.id);
+
+      setState(() {
+        avatarUrl = publicUrl;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Image mise à jour')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune image sélectionnée')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: Text('Profil', style: AppTextStyles.pageName)),
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (currentUser == null) {
-      // L'utilisateur n'est pas connecté
+    if (user == null) {
       return Scaffold(
-        appBar: AppBar(title: Text('Profil', style: AppTextStyles.pageName)),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 80, color: Colors.grey),
-              SizedBox(height: 20),
-              Text(
-                'Vous devez vous connecter pour accéder à votre profil.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.title,
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/login');
-                },
-                child: Text('Se connecter'),
-              ),
-            ],
-          ),
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          title: const Text('Profil'),
         ),
+        body: const Center(child: Text('Vous devez être connecté.')),
       );
     }
 
-    // L'utilisateur est connecté
     return Scaffold(
-      appBar: AppBar(title: Text('Profil', style: AppTextStyles.pageName)),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Créer votre compte business'),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => CreateUserAccountForm(),
-                                ),
-                              );
-                            },
-                            child: Text('Créer le compte'),
-                          ),
-                        ],
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: const Text(
+          'Profil',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: _pickAndUploadImage,
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundImage: avatarUrl != null
+                          ? NetworkImage(avatarUrl!)
+                          : null,
+                      child: avatarUrl == null
+                          ? const Icon(Icons.add_a_photo, size: 30)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Nom modifiable au clic
+                  GestureDetector(
+                    onTap: () async {
+                      final newName = await showDialog<String>(
+                        context: context,
+                        builder: (context) {
+                          final controller = TextEditingController(
+                            text: userName ?? '',
+                          );
+                          return AlertDialog(
+                            title: const Text('Modifier le nom d\'utilisateur'),
+                            content: TextField(
+                              controller: controller,
+                              decoration: const InputDecoration(
+                                labelText: 'Nouveau nom',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Annuler'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  Navigator.pop(
+                                    context,
+                                    controller.text.trim(),
+                                  );
+                                },
+                                child: const Text('Enregistrer'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (newName != null && newName.isNotEmpty) {
+                        await supabase
+                            .from('profiles')
+                            .update({'full_name': newName})
+                            .eq('id', user!.id);
+
+                        setState(() {
+                          _nameController.text = newName;
+                          userName = newName;
+                        });
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Nom mis à jour')),
+                        );
+                      }
+                    },
+                    child: Text(
+                      userName != null && userName!.isNotEmpty
+                          ? userName!
+                          : 'Name User',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        color: Colors.blueAccent,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  );
-                },
-                child: CircleAvatar(
-                  backgroundColor: const Color.fromARGB(255, 229, 228, 228),
-                  radius: 60,
-                  backgroundImage: currentUser!.photoURL != null
-                      ? NetworkImage(currentUser!.photoURL!)
-                      : null,
-                  child: currentUser!.photoURL == null
-                      ? Icon(Icons.person, size: 80, color: Colors.grey)
-                      : null,
-                ),
-              ),
-              SizedBox(height: 20),
-              Text('User profile', style: AppTextStyles.title),
-              SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: Color.fromARGB(255, 201, 214, 220),
-                        radius: 25,
-                        child: Icon(Icons.light_mode),
-                      ),
-                      SizedBox(height: 5),
-                      Text('Ajouter un\n    avis'),
-                    ],
                   ),
-                  Column(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: Color.fromARGB(255, 201, 214, 220),
-                        radius: 25,
-                        child: Icon(
-                          Icons.camera_alt,
-                          color: hasBusinessAccount
-                              ? Colors.black
-                              : Colors.grey,
-                        ),
-                      ),
-                      SizedBox(height: 5),
+
+                  const SizedBox(height: 30),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.business),
+                    label: Text(
                       hasBusinessAccount
-                          ? Text('Ajouter une\n     photo')
-                          : Opacity(
-                              opacity: 0.5,
-                              child: Text('Créer un compte\npour ajouter'),
+                          ? 'Aller à mon compte business'
+                          : 'Créer un compte business',
+                    ),
+                    onPressed: () {
+                      if (hasBusinessAccount) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => BusinessAccount(
+                              id: businessAccountData!['id'].toString(),
                             ),
-                    ],
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => CreateBusinessAccountPage(),
+                          ),
+                        );
+                      }
+                    },
                   ),
                   Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        backgroundColor: Color.fromARGB(255, 201, 214, 220),
-                        radius: 25,
-                        child: GestureDetector(
-                          onTap: () {
-                            if (hasBusinessAccount) {
-                              Navigator.pushNamed(context, '/businessAccount');
-                            } else {
-                              _showCreateAccountDialog();
-                            }
-                          },
-                          child: Icon(
-                            Icons.other_houses,
-                            color: hasBusinessAccount
-                                ? Colors.black
-                                : Colors.grey,
+                      Divider(),
+                      Text(
+                        'Account',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 20),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PersonalInfoScreen(),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.person_2_outlined,
+                                      color: AppColors.primaryBlue,
+                                    ),
+                                    SizedBox(width: 5),
+                                    Text('Personal information'),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.keyboard_arrow_right_sharp),
+                            ],
                           ),
                         ),
                       ),
-                      SizedBox(height: 5),
-                      hasBusinessAccount
-                          ? Text('Ajouter un\ncommerce')
-                          : Opacity(
-                              opacity: 0.5,
-                              child: Text('Créer un compte\npour ajouter'),
+                      Divider(),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => FavoritesPage(),
                             ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.favorite_border,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text('Favorites'),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.keyboard_arrow_right_sharp),
+                          ],
+                        ),
+                      ),
+                      Divider(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.notifications_none,
+                                  color: AppColors.primaryBlue,
+                                ),
+                                SizedBox(width: 5),
+                                Text('Notifications'),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.keyboard_arrow_right_sharp),
+                        ],
+                      ),
+                      Divider(),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SettingsPage(),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.settings,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text('Settings'),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.keyboard_arrow_right_sharp),
+                          ],
+                        ),
+                      ),
+                      Divider(),
+                      Text(
+                        'Support',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 20),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HelpCenterPage(),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.help_outline,
+                                    color: AppColors.primaryBlue,
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text('Help Center'),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.keyboard_arrow_right_sharp),
+                          ],
+                        ),
+                      ),
+                      Divider(),
                     ],
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await Supabase.instance.client.auth.signOut();
+                      if (!mounted) return;
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (context) => HomePage()),
+                        (route) => false,
+                      );
+                    },
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Déconnexion'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ],
               ),
-              Divider(),
-              buildSectionItem(
-                icon: Icons.person,
-                text: 'Personal information',
-              ),
-              buildSectionItem(icon: Icons.favorite, text: 'Favorites'),
-              buildSectionItem(
-                icon: Icons.notifications,
-                text: 'Notifications',
-              ),
-              buildSectionItem(icon: Icons.settings, text: 'Settings'),
-              buildSupportSection(),
-              SizedBox(height: 50),
-              if (!hasBusinessAccount)
-                ButtonsDouble(
-                  title: 'Create your business account',
-                  color1: Colors.white,
-                  color2: AppColors.primaryBlue,
-                  color3: AppColors.primaryBlue,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget buildSectionItem({required IconData icon, required String text}) {
-    return Container(
-      height: 50,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 4),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: Row(
-                children: [
-                  Icon(icon, color: AppColors.primaryBlue),
-                  SizedBox(width: 10),
-                  Text(text, style: AppTextStyles.categories),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios, size: 15),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget buildSupportSection() {
-    return Container(
-      height: 80,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 4),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 10, left: 10),
-            child: Text('Supports', style: AppTextStyles.titleName),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 10, right: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Row(
-                    children: [
-                      Icon(Icons.help, color: AppColors.primaryBlue),
-                      SizedBox(width: 10),
-                      Text('Help center', style: AppTextStyles.categories),
-                    ],
-                  ),
-                ),
-                Icon(Icons.arrow_forward_ios, size: 15),
-              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

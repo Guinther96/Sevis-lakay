@@ -1,164 +1,236 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sevis_lakay/models/business_account_model.dart';
+import 'package:sevis_lakay/models/servives/business_account_services.dart';
 import 'package:sevis_lakay/views/profile/Business_account/business_account.dart';
-import 'package:sevis_lakay/widget/location_input.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
-class BusinessForm extends StatefulWidget {
-  const BusinessForm({super.key});
+class CreateBusinessAccountPage extends StatefulWidget {
+  const CreateBusinessAccountPage({super.key});
 
   @override
-  State<BusinessForm> createState() => _BusinessFormState();
+  State<CreateBusinessAccountPage> createState() =>
+      _CreateBusinessAccountPageState();
 }
 
-class _BusinessFormState extends State<BusinessForm> {
-  late TextEditingController nameController;
-  late TextEditingController hourController;
-  late TextEditingController addressController;
-  late TextEditingController phoneController;
-  late TextEditingController emailController;
-  late TextEditingController descriptionController;
-
+class _CreateBusinessAccountPageState extends State<CreateBusinessAccountPage> {
   final _formKey = GlobalKey<FormState>();
+  final _service = BusinessAccountService();
 
-  String name = '';
-  String address = '';
-  String phone = '';
-  String email = '';
-  String openingHour = '';
-  String description = '';
-  String photoUrl = '';
-  String businessType = 'Restaurant'; // Valeur par défaut
+  final _nameController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _openingHourController = TextEditingController();
+  final _closingHourController = TextEditingController();
 
-  final List<String> businessTypes = [
-    'Restaurant',
-    'Église',
-    'Club',
-    'Hôtel',
-    'Autre',
-  ];
+  String _selectedType = 'Restaurant';
+  bool _isSubmitting = false;
 
-  @override
-  void initState() {
-    super.initState();
-    nameController = TextEditingController();
-    hourController = TextEditingController();
-    addressController = TextEditingController();
-    phoneController = TextEditingController();
-    emailController = TextEditingController();
-    descriptionController = TextEditingController();
+  // Méthode sécurisée pour vérifier si le business est ouvert
+  bool isOpenNow(String openingHour, String closing_hour) {
+    try {
+      if (openingHour.isEmpty || closing_hour.isEmpty) return false;
+
+      final now = DateTime.now();
+      final format = DateFormat("H:mm");
+
+      final openTime = format.parse(openingHour);
+      final closeTime = format.parse(closing_hour);
+
+      final openDateTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        openTime.hour,
+        openTime.minute,
+      );
+      final closeDateTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        closeTime.hour,
+        closeTime.minute,
+      );
+
+      return now.isAfter(openDateTime) && now.isBefore(closeDateTime);
+    } catch (e) {
+      // Retourne false si le parsing échoue
+      return false;
+    }
   }
 
   void _submit() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
+    if (!_formKey.currentState!.validate()) return;
 
-      final doc = await FirebaseFirestore.instance
-          .collection('business_accounts')
-          .add({
-            'name': name,
-            'address': address,
-            'phone': phone,
-            'email': email,
-            'openingHour': openingHour,
-            'description': description,
-            'businessType': businessType, // 👈 nouveau champ
-            'photoUrl': 'https://url_de_ton_image_par_defaut.png',
-            'createdAt': Timestamp.now(),
-          });
+    setState(() => _isSubmitting = true);
 
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => BusinessAccount(id: doc.id)),
-        (route) => false,
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        throw Exception('User must be logged in to create a business account');
+      }
+
+      final business = BusinessAccountModel(
+        name: _nameController.text,
+        address: _addressController.text,
+        phone: _phoneController.text,
+        email: _emailController.text,
+        description: _descriptionController.text,
+        opening_hour: _openingHourController.text,
+        closing_hour: _closingHourController.text,
+        businesstype: _selectedType,
+        photoUrl: '',
+        user_id: user.id,
+        openingHour: '',
       );
+
+      final newBusinessId = await _service.createBusiness(business, user.id);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Business enregistré avec succès")),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => BusinessAccount(id: newBusinessId.toString()),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("❌ ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isSubmitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final open = isOpenNow(
+      _openingHourController.text,
+      _closingHourController.text,
+    );
+
     return Scaffold(
-      appBar: AppBar(title: Text('Créer un compte')),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  keyboardType: TextInputType.name,
-                  validator: (val) =>
-                      val!.isEmpty ? 'Veuillez entrer un nom' : null,
-                  onSaved: (val) => name = val!,
-                  decoration: InputDecoration(labelText: 'Nom'),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        title: const Text('Créer un business'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: "Nom"),
+                validator: (v) => v!.isEmpty ? "Requis" : null,
+              ),
+              TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(labelText: "Adresse"),
+                validator: (v) => v!.isEmpty ? "Requis" : null,
+              ),
+              TextFormField(
+                controller: _phoneController,
+                decoration: const InputDecoration(labelText: "Téléphone"),
+              ),
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: "Email"),
+                validator: (v) =>
+                    v != null && v.contains('@') ? null : "Email invalide",
+              ),
+              TextFormField(
+                controller: _openingHourController,
+                decoration: const InputDecoration(
+                  labelText: "Heure d'ouverture (HH:mm)",
                 ),
-                TextFormField(
-                  controller: addressController,
-                  validator: (val) =>
-                      val!.isEmpty ? 'Veuillez entrer une adresse' : null,
-                  onSaved: (val) => address = val!,
-                  decoration: InputDecoration(labelText: 'Adresse'),
+                keyboardType: TextInputType.datetime,
+              ),
+              TextFormField(
+                controller: _closingHourController,
+                decoration: const InputDecoration(
+                  labelText: "Heure de fermeture (HH:mm)",
                 ),
-                TextFormField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  validator: (val) => val!.isEmpty
-                      ? 'Veuillez entrer un numéro de téléphone'
-                      : null,
-                  onSaved: (val) => phone = val!,
-                  decoration: InputDecoration(labelText: 'Téléphone'),
+                keyboardType: TextInputType.datetime,
+              ),
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(labelText: "Description"),
+                maxLines: 3,
+              ),
+              DropdownButtonFormField<String>(
+                value: _selectedType,
+                items:
+                    [
+                          'Restaurant',
+                          'Clubs',
+                          'Églises',
+                          'Hôtels',
+                          'Bars',
+                          'Ventes à emporter',
+                          'Cafés',
+                          'Livraison',
+                          'Parcs',
+                          'Salles de sport',
+                          'Art',
+                          'Attractions',
+                          'Vie nocturne',
+                          'Concerts',
+                          'Événements',
+                          'Films',
+                          'Musées',
+                          'Autres',
+                          'Supermarchés',
+                          'Magasins',
+                          'Centres commerciaux',
+                        ]
+                        .map(
+                          (type) =>
+                              DropdownMenuItem(value: type, child: Text(type)),
+                        )
+                        .toList(),
+                onChanged: (value) =>
+                    setState(() => _selectedType = value ?? 'Restaurant'),
+                decoration: const InputDecoration(
+                  labelText: "Type de business",
                 ),
-                TextFormField(
-                  controller: emailController,
-                  validator: (val) =>
-                      val!.isEmpty ? 'Veuillez entrer un email' : null,
-                  onSaved: (val) => email = val!,
-                  decoration: InputDecoration(labelText: 'Email'),
-                ),
-                TextFormField(
-                  controller: hourController,
-                  keyboardType: TextInputType.datetime,
-                  validator: (val) => val!.isEmpty
-                      ? 'Veuillez entrer l\'heure d\'ouverture'
-                      : null,
-                  onSaved: (val) => openingHour = val!,
-                  decoration: InputDecoration(labelText: 'Heure d\'ouverture'),
-                ),
-                TextFormField(
-                  controller: descriptionController,
-                  keyboardType: TextInputType.multiline,
-                  validator: (val) =>
-                      val!.isEmpty ? 'Veuillez entrer une description' : null,
-                  onSaved: (val) => description = val!,
-                  decoration: InputDecoration(labelText: 'Description'),
-                ),
-                SizedBox(height: 16),
-
-                /// 🔽 Type de business (NOUVEAU)
-                DropdownButtonFormField<String>(
-                  value: businessType,
-                  items: businessTypes.map((type) {
-                    return DropdownMenuItem(value: type, child: Text(type));
-                  }).toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        businessType = value;
-                      });
-                    }
-                  },
-                  decoration: InputDecoration(
-                    labelText: 'Type de business',
-                    border: OutlineInputBorder(),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Icon(
+                    open ? Icons.check_circle : Icons.cancel,
+                    color: open ? Colors.green : Colors.red,
                   ),
-                ),
-                SizedBox(height: 20),
-                LocationInput(),
-
-                SizedBox(height: 20),
-                ElevatedButton(onPressed: _submit, child: Text('Continuer')),
-              ],
-            ),
+                  const SizedBox(width: 5),
+                  Text(
+                    open ? "Ouvert" : "Fermé",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: open ? Colors.green : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _isSubmitting
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton(
+                      onPressed: _submit,
+                      child: const Text("Créer"),
+                    ),
+            ],
           ),
         ),
       ),

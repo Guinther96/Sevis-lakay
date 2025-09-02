@@ -8,7 +8,9 @@ import 'package:sevis_lakay/views/profile/profilescreen.dart';
 import 'package:sevis_lakay/views/search/search.dart';
 
 class BottomNavigation extends StatefulWidget {
-  const BottomNavigation({super.key});
+  const BottomNavigation({super.key, required this.selectedIndex});
+
+  final int selectedIndex;
 
   @override
   State<BottomNavigation> createState() => _BottomNavigation();
@@ -20,20 +22,22 @@ class _BottomNavigation extends State<BottomNavigation> {
   List<Widget> pages = [
     HomePage(),
     SearchScreen(selectedType: ''),
-    const Mapscreen(),
-    const FavoritePage(),
-    const Profilescreen(),
+    const MapViewPage(),
+    const FavoritesPage(),
+    const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: BottomNavigationBar(
         iconSize: 30,
         selectedFontSize: 15,
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
+        backgroundColor: Colors.white,
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,

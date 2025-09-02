@@ -1,10 +1,9 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:sevis_lakay/components/buttons_double.dart';
 import 'package:sevis_lakay/components/colors.dart';
-import 'package:sevis_lakay/components/text_field.dart';
 import 'package:sevis_lakay/components/text_styles.dart';
-import 'package:sevis_lakay/views/profile/user_acccount/user_account.dart';
+import 'package:sevis_lakay/views/profile/profilescreen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LogInPage extends StatefulWidget {
   const LogInPage({super.key});
@@ -17,43 +16,40 @@ class _LogInPageState extends State<LogInPage> {
   String email = '';
   String password = '';
 
-  // ...existing code...
-
   TextEditingController emailController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
 
   final formkey = GlobalKey<FormState>();
 
-  registration() async {
+  Future<void> registration() async {
     if (passwordController.text.isNotEmpty) {
       try {
-        UserCredential userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-              email: emailController.text,
-              password: passwordController.text,
-            );
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Registration successful')));
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => UserAccount()),
+        final response = await Supabase.instance.client.auth.signUp(
+          email: emailController.text,
+          password: passwordController.text,
         );
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'weak-password') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('The password provided is too weak.')),
-          );
-        } else if (e.code == 'email-already-in-use') {
+
+        if (response.user != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('The account already exists for that email.'),
+              content: Text(
+                'Inscription réussie. Veuillez vérifier votre email.',
+              ),
             ),
           );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => ProfileScreen()),
+          );
         }
+      } on AuthException catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An error occurred during registration.')),
+          SnackBar(content: Text('Erreur pendant l\'inscription.')),
         );
       }
     }
@@ -69,7 +65,7 @@ class _LogInPageState extends State<LogInPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // ...existing code...
+                Image.asset('assets/images/sevislakay.png', height: 200),
                 Form(
                   key: formkey,
                   child: Column(
@@ -78,9 +74,8 @@ class _LogInPageState extends State<LogInPage> {
                         controller: emailController,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
+                            return 'Veuillez entrer votre email';
                           }
-                          // You can add more validation here if needed
                           return null;
                         },
                         decoration: InputDecoration(hintText: 'Email'),
@@ -90,22 +85,20 @@ class _LogInPageState extends State<LogInPage> {
                         controller: passwordController,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter your password';
+                            return 'Veuillez entrer votre mot de passe';
                           }
                           if (value.length < 6) {
-                            return 'Password must be at least 6 characters';
+                            return 'Le mot de passe doit contenir au moins 6 caractères';
                           }
-                          // You can add more validation here if needed
                           return null;
                         },
-                        decoration: InputDecoration(hintText: 'Password'),
+                        decoration: InputDecoration(hintText: 'Mot de passe'),
                         obscureText: true,
                       ),
                     ],
                   ),
                 ),
                 SizedBox(height: 20),
-                // ...existing code...
                 GestureDetector(
                   onTap: () async {
                     if (formkey.currentState!.validate()) {
@@ -113,17 +106,14 @@ class _LogInPageState extends State<LogInPage> {
                         email = emailController.text;
                         password = passwordController.text;
                       });
-                      registration();
-                      // Navigate to the next screen or perform any other action
-                      // Navigator.push(context, MaterialPageRoute(builder: (context) => NextScreen()));
+                      await registration();
                     }
                   },
                   child: ButtonsDouble(
-                    title: 'Login profil',
+                    title: 'Créer mon compte',
                     color1: AppColors.primaryBlue,
                     color2: AppColors.primaryBlue,
                     color3: Colors.white,
-                    // <-- Ajoute ceci
                   ),
                 ),
               ],
